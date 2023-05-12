@@ -208,10 +208,12 @@ def main(**kwargs) -> None:
         custom_ops.verbosity = 'none'
 
     # Train.
+    import pprint
+    dist.print0(pprint.pprint(c, indent=2, width=300))
     training_loop.training_loop(**c)
 
 
 if __name__ == "__main__":
     main()  # pylint: disable=no-value-for-parameter
 
-# python -m torch.distributed.run --standalone --nproc_per_node 1 train.py --outdir ./output_dbg/ --cfg lite --data ./data/cifar10-32x32.zip --img-resolution 32 --batch 16 --batch-gpu 4 --kimg 25000 --metrics fid50k_full
+# torchrun --nproc_per_node=1 --nnodes=1 --rdzv_id=918291 --rdzv-backend=c10d --rdzv-endpoint=localhost:36593 train.py --outdir ./output_dbg/ --cfg lite --data ./data/cifar10-32x32.zip --img-resolution 32 --batch 16 --batch-gpu 4 --kimg 25000 --metrics fid50k_full
