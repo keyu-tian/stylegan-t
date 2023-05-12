@@ -23,7 +23,7 @@
 # Based on code from https://github.com/isl-org/DPT
 
 """Flexible configuration and feature extraction of timm VisionTransformers."""
-
+import os.path
 import types
 import math
 from typing import Callable
@@ -126,7 +126,10 @@ def make_vit_backbone(
 
     patch_size = [16, 16]
     model = timm.create_model('vit_small_patch16_224', pretrained=False, num_classes=0)
-    missing, unexpected = model.load_state_dict(torch.load('data/dino_deitsmall16_pretrain.pth', 'cpu'))
+    ckpt = 'data/dino_deitsmall16_pretrain.pth'
+    if not os.path.exists(ckpt):
+        ckpt = '/opt/tiger/run_trial/' + ckpt
+    missing, unexpected = model.load_state_dict(torch.load(ckpt, 'cpu'))
     assert len(missing) == len(unexpected) == 0
 
     pretrained = nn.Module()
