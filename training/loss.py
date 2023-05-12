@@ -90,6 +90,8 @@ class ProjectedGANLoss:
         c_enc = None
         if isinstance(c_raw[0], str):
             c_enc = self.clip.encode_text(c_raw)
+        else:
+            c_enc = c_raw.to(self.clip.device)  # todo tky: added this for run CIFAR-10;  but this seems it uses one hot as c_enc, rather than clip's CIFAR cls text label emb as c_enc
 
         if phase == 'D':
             # Minimize logits for generated images.

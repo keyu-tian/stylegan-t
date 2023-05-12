@@ -216,4 +216,105 @@ def main(**kwargs) -> None:
 if __name__ == "__main__":
     main()  # pylint: disable=no-value-for-parameter
 
-# torchrun --nproc_per_node=1 --nnodes=1 --rdzv_id=918291 --rdzv-backend=c10d --rdzv-endpoint=localhost:36593 train.py --outdir ./output_dbg/ --cfg lite --data ./data/cifar10-32x32.zip --img-resolution 32 --batch 16 --batch-gpu 4 --kimg 25000 --metrics fid50k_full
+
+"""
+
+torchrun --nproc_per_node=1 --nnodes=1 --rdzv_id=918291 --rdzv-backend=c10d --rdzv-endpoint=localhost:36593 train.py --outdir ./output_dbg/ --cfg lite --data ./data/cifar10-32x32.zip --img-resolution 32 --batch 16 --batch-gpu 4 --kimg 25000 --metrics fid50k_full
+
+Training options:
+{
+  "D_kwargs": {
+    "class_name": "networks.discriminator.ProjectedDiscriminator"
+  },
+  "G_kwargs": {
+    "class_name": "networks.generator.Generator",
+    "z_dim": 64,
+    "train_mode": "all",
+    "synthesis_kwargs": {
+      "channel_base": 32768,
+      "channel_max": 512,
+      "num_res_blocks": 2,
+      "architecture": "skip"
+    },
+    "img_resolution": 32
+  },
+  "G_opt_kwargs": {
+    "class_name": "torch.optim.Adam",
+    "betas": [
+      0,
+      0.99
+    ],
+    "eps": 1e-08,
+    "lr": 0.002
+  },
+  "D_opt_kwargs": {
+    "class_name": "torch.optim.Adam",
+    "betas": [
+      0,
+      0.99
+    ],
+    "eps": 1e-08,
+    "lr": 0.002
+  },
+  "loss_kwargs": {
+    "class_name": "training.loss.ProjectedGANLoss",
+    "blur_init_sigma": 32,
+    "blur_fade_kimg": 1000,
+    "clip_weight": 0.0
+  },
+  "data_loader_kwargs": {
+    "pin_memory": true,
+    "num_workers": 3,
+    "prefetch_factor": 2
+  },
+  "training_set_kwargs": {
+    "path": "./data/cifar10-32x32.zip",
+    "xflip": false,
+    "use_labels": true,
+    "class_name": "training.data_zip.ImageFolderDataset",
+    "resolution": 32,
+    "random_seed": 0
+  },
+  "random_seed": 0,
+  "image_snapshot_ticks": 100,
+  "network_snapshot_ticks": 100,
+  "metrics": [
+    "fid50k_full"
+  ],
+  "total_kimg": 2500,
+  "kimg_per_tick": 4,
+  "batch_size": 16,
+  "batch_gpu": 4,
+  "ema_kimg": 5.0,
+  "run_dir": "./output_dbg/00000-cifar10-32x32@32-lite-gpus1-b16-bgpu4"
+}
+
+Output directory:    ./output_dbg/00000-cifar10-32x32@32-lite-gpus1-b16-bgpu4
+Number of GPUs:      1
+Batch size:          16 images
+Training duration:   2500 kimg
+Dataset path:        ./data/cifar10-32x32.zip
+Dataset resolution:  32
+Dataset labels:      True
+Dataset x-flips:     False
+
+Creating output directory...
+{ 'D_kwargs': {'class_name': 'networks.discriminator.ProjectedDiscriminator'},
+  'D_opt_kwargs': {'betas': [0, 0.99], 'class_name': 'torch.optim.Adam', 'eps': 1e-08, 'lr': 0.002},
+  'G_kwargs': {'class_name': 'networks.generator.Generator', 'img_resolution': 32, 'synthesis_kwargs': {'architecture': 'skip', 'channel_base': 32768, 'channel_max': 512, 'num_res_blocks': 2}, 'train_mode': 'all', 'z_dim': 64},
+  'G_opt_kwargs': {'betas': [0, 0.99], 'class_name': 'torch.optim.Adam', 'eps': 1e-08, 'lr': 0.002},
+  'batch_gpu': 4,
+  'batch_size': 16,
+  'data_loader_kwargs': {'num_workers': 3, 'pin_memory': True, 'prefetch_factor': 2},
+  'ema_kimg': 5.0,
+  'image_snapshot_ticks': 100,
+  'kimg_per_tick': 4,
+  'loss_kwargs': {'blur_fade_kimg': 1000, 'blur_init_sigma': 32, 'class_name': 'training.loss.ProjectedGANLoss', 'clip_weight': 0.0},
+  'metrics': ['fid50k_full'],
+  'network_snapshot_ticks': 100,
+  'random_seed': 0,
+  'run_dir': './output_dbg/00000-cifar10-32x32@32-lite-gpus1-b16-bgpu4',
+  'total_kimg': 2500,
+  'training_set_kwargs': {'class_name': 'training.data_zip.ImageFolderDataset', 'path': './data/cifar10-32x32.zip', 'random_seed': 0, 'resolution': 32, 'use_labels': True, 'xflip': False}}
+
+"""
