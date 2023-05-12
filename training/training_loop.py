@@ -295,7 +295,7 @@ def training_loop(
 
     # Construct networks.
     dist.print0('Constructing networks...')
-    G = dnnlib.util.construct_class_by_name(conditional=(training_set.label_dim>0), **G_kwargs).train().requires_grad_(False).to(device)
+    G = dnnlib.util.construct_class_by_name(**G_kwargs).train().requires_grad_(False).to(device)
     G_ema = copy.deepcopy(G).eval()
     D = dnnlib.util.construct_class_by_name(c_dim=G.c_dim, **D_kwargs).train().requires_grad_(False).to(device)
 

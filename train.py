@@ -207,6 +207,9 @@ def main(**kwargs) -> None:
     else:
         custom_ops.verbosity = 'none'
 
+    conditional = all(x not in c.training_set_kwargs.path.lower() for x in ['cifar', 'imagenet'])   # todo: conditional = False for cifar10 or imagenet
+    c.G_kwargs.conditional = conditional
+
     # Train.
     import pprint
     dist.print0(pprint.pprint(c, indent=2, width=300))
