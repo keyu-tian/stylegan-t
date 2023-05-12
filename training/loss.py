@@ -90,6 +90,22 @@ class ProjectedGANLoss:
         c_enc = None
         if isinstance(c_raw[0], str):
             c_enc = self.clip.encode_text(c_raw)
+        else:   # todo: only for cifar10
+            c_enc = []
+            for i in c_raw.argmax(1).cpu().numpy():
+                c_enc.append({
+                    0: 'airplane',
+                    1: 'automobile',
+                    2: 'bird',
+                    3: 'cat',
+                    4: 'deer',
+                    5: 'dog',
+                    6: 'frog',
+                    7: 'horse',
+                    8: 'ship',
+                    9: 'truck',
+                }[i])
+            c_enc = self.clip.encode_text(c_enc)
 
         if phase == 'D':
             # Minimize logits for generated images.

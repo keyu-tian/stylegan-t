@@ -176,26 +176,13 @@ def open_coco(source: str, *, max_images: Optional[int]):
 def open_cifar10(tarball: str, *, max_images: Optional[int]):
     images = []
     labels = []
-    # todo tky: add this for fix the bug in `loss.py` that c_enc is None (in `generator.py` assert c is not None)
-    int_to_text = {
-        0: 'airplane',
-        1: 'automobile',
-        2: 'bird',
-        3: 'cat',
-        4: 'deer',
-        5: 'dog',
-        6: 'frog',
-        7: 'horse',
-        8: 'ship',
-        9: 'truck',
-    }
     with tarfile.open(tarball, 'r:gz') as tar:
         for batch in range(1, 6):
             member = tar.getmember(f'cifar-10-batches-py/data_batch_{batch}')
             with tar.extractfile(member) as file:
                 data = pickle.load(file, encoding='latin1')
             images.append(data['data'].reshape(-1, 3, 32, 32))
-            labels.append(int_to_text[data['labels']])
+            labels.append(data['labels'])
 
     images = np.concatenate(images)
     labels = np.concatenate(labels)
