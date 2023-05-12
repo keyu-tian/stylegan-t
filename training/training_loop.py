@@ -398,10 +398,12 @@ def training_loop(
                 phase.end_event.record(torch.cuda.current_stream(device))
 
         # Update G_ema.
-        ema_nimg = ema_kimg * 1000
-        if ema_rampup is not None:
-            ema_nimg = min(ema_nimg, cur_nimg * ema_rampup)
-        ema_beta = 0.5 ** (batch_size / max(ema_nimg, 1e-8))
+        # ema_nimg = ema_kimg * 1000
+        # if ema_rampup is not None:
+        #     ema_nimg = min(ema_nimg, cur_nimg * ema_rampup)
+        # ema_beta = 0.5 ** (batch_size / max(ema_nimg, 1e-8))
+        bs = 999
+        ema_beta = 0.5 ** (bs / (bs * 10 / 32 * 1000))  # 0.99778438712388
         for p_ema, p in zip(G_ema.parameters(), G.parameters()):
             p_ema.copy_(p.lerp(p_ema, ema_beta))
         for b_ema, b in zip(G_ema.buffers(), G.buffers()):

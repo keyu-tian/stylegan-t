@@ -28,6 +28,7 @@ import types
 import math
 from typing import Callable
 
+import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -115,13 +116,18 @@ def get_activation(name: str) -> Callable:
 
 
 def make_vit_backbone(
-    model: nn.Module,
-    patch_size: list[int] = [16, 16],
+    # model: nn.Module,
+    # patch_size: list[int] = [16, 16],
     hooks: list[int] = [2, 5, 8, 11],
     hook_patch: bool = True,
     start_index: list[int] = 1,
 ):
     assert len(hooks) == 4
+
+    patch_size = [16, 16]
+    model = timm.create_model('vit_small_patch16_224', pretrained=False, num_classes=0)
+    missing, unexpected = model.load_state_dict(torch.load('data/dino_deitsmall16_pretrain.pth', 'cpu'))
+    assert len(missing) == len(unexpected) == 0
 
     pretrained = nn.Module()
     pretrained.model = model

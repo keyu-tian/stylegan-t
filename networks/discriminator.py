@@ -17,7 +17,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.spectral_norm import SpectralNorm
 from torchvision.transforms import RandomCrop, Normalize
-import timm
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 from torch_utils import misc
@@ -109,10 +108,7 @@ class DINO(torch.nn.Module):
         super().__init__()
         self.n_hooks = len(hooks) + int(hook_patch)
 
-        self.model = make_vit_backbone(
-            timm.create_model('vit_small_patch16_224_dino', pretrained=True),
-            patch_size=[16,16], hooks=hooks, hook_patch=hook_patch,
-        )
+        self.model = make_vit_backbone(hooks=hooks, hook_patch=hook_patch)
         self.model = self.model.eval().requires_grad_(False)
 
         self.img_resolution = self.model.model.patch_embed.img_size[0]

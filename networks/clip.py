@@ -12,8 +12,12 @@ import torch
 import torch.nn as nn
 from torchvision.transforms import Normalize
 import torch.nn.functional as F
-import open_clip
-from timm.data import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
+try:
+    import open_clip
+except:
+    open_clip = None
+OPENAI_CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
+OPENAI_CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 
 
 class CLIP(nn.Module):

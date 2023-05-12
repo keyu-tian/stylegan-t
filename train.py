@@ -60,10 +60,10 @@ def init_dataset_kwargs(data: str, resolution: int) -> dnnlib.EasyDict:
 @click.option('--outdir',          help='Where to save the results',        type=str, required=True)
 @click.option('--data',            help='Training data',                    type=str, required=True)
 @click.option('--img-resolution',  help='Resolution for webdatasets',       type=click.IntRange(min=8), required=True)
-@click.option('--batch',           help='Total batch size',                 type=click.IntRange(min=1), required=True)
+@click.option('--batch',           help='Total batch size',                 type=click.IntRange(min=1), default=128)
 @click.option('--batch-gpu',       help='Limit batch size per GPU',         type=click.IntRange(min=1), default=8)
 # G architecture args
-@click.option('--cfg',             help='Base config.',                     type=click.Choice(['custom', 'lite', 'full']), default='custom')
+@click.option('--cfg',             help='Base config.',                     type=click.Choice(['custom', 'lite', 'full']), default='full')
 @click.option('--cbase',           help='Capacity multiplier',              type=click.IntRange(min=1), default=32768)
 @click.option('--cmax',            help='Max. feature maps',                type=click.IntRange(min=1), default=512)
 @click.option('--res-blocks',      help='Number of residual blocks',        type=click.IntRange(min=1), default=2)
@@ -77,7 +77,7 @@ def init_dataset_kwargs(data: str, resolution: int) -> dnnlib.EasyDict:
 @click.option('--blur-fade-kimg',  help='Discriminator blur duration',      type=click.IntRange(min=0), default=1000)
 # Misc settings.
 @click.option('--suffix',          help='suffix of result dirname',         type=str, default='')
-@click.option('--metrics',         help='Quality metrics',                  type=parse_comma_separated_list, default=[])
+@click.option('--metrics',         help='Quality metrics',                  type=parse_comma_separated_list, default=['fid50k_full'])
 @click.option('--kimg',            help='Total training duration',          type=click.IntRange(min=1), default=25000)
 @click.option('--tick',            help='How often to print progress',      type=click.IntRange(min=1), default=4)
 @click.option('--snap',            help='How often to save snapshots',      type=click.IntRange(min=1), default=100)
@@ -100,11 +100,11 @@ def main(**kwargs) -> None:
 
     # Synthesis settings.
     cfg_synthesis = {
-        'full': dnnlib.EasyDict(channel_base=65536, channel_max=2048, num_res_blocks=3),
-        'lite': dnnlib.EasyDict(channel_base=32768, channel_max=512, num_res_blocks=2),
+        'full': dnnlib.EasyDict(channel_base=65536, channel_max=2048, num_res_blocks=3),    # default
+        'lite': dnnlib.EasyDict(channel_base=32768, channel_max=512, num_res_blocks=2),     # only for ablation study
         'custom': dnnlib.EasyDict(channel_base=opts.cbase, channel_max=opts.cmax, num_res_blocks=opts.res_blocks),
     }
-    c.G_kwargs.synthesis_kwargs = cfg_synthesis[opts.cfg]
+    c.G_kwargs.synthesis_kwargs = cfg_synthesis['lite' if 'KEVIN_LOCAL' in os.environ else opts.cfg]
     c.G_kwargs.synthesis_kwargs.architecture = 'skip'
 
     # Optimizer.
@@ -210,5 +210,8 @@ def main(**kwargs) -> None:
     # Train.
     training_loop.training_loop(**c)
 
+
 if __name__ == "__main__":
     main()  # pylint: disable=no-value-for-parameter
+
+# python -m torch.distributed.run --standalone --nproc_per_node 1 train.py --outdir ./output_dbg/ --cfg lite --data ./data/cifar10-32x32.zip --img-resolution 32 --batch 16 --batch-gpu 4 --kimg 25000 --metrics fid50k_full
