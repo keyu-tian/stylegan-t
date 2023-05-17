@@ -10,6 +10,8 @@
 Projected discriminator architecture from
 "StyleGAN-T: Unlocking the Power of GANs for Fast Large-Scale Text-to-Image Synthesis".
 """
+import random
+from typing import List
 
 import numpy as np
 import torch
@@ -19,7 +21,6 @@ from torch.nn.utils.spectral_norm import SpectralNorm
 from torchvision.transforms import RandomCrop, Normalize
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-from torch_utils import misc
 from networks.shared import ResidualBlock, FullyConnectedLayer
 from networks.vit_utils import make_vit_backbone, forward_vit
 from training.diffaug import DiffAugment
@@ -75,36 +76,44 @@ def make_block(channels: int, kernel_size: int) -> nn.Module:
 
 
 class DiscHead(nn.Module):
-    def __init__(self, channels: int, c_dim: int, cmap_dim: int = 64):
+    def __init__(self, dino_C: int, cond_dim: int, cmap_dim: int = 64):
         super().__init__()
-        self.channels = channels
-        self.c_dim = c_dim
+        self.channels = dino_C
+        self.c_dim = cond_dim
         self.cmap_dim = cmap_dim
 
         self.main = nn.Sequential(
-            make_block(channels, kernel_size=1),
-            ResidualBlock(make_block(channels, kernel_size=9))
+            make_block(dino_C, kernel_size=1),
+            ResidualBlock(make_block(dino_C, kernel_size=9))
         )
 
         if self.c_dim > 0:
             self.cmapper = FullyConnectedLayer(self.c_dim, cmap_dim)
-            self.cls = SpectralConv1d(channels, cmap_dim, kernel_size=1, padding=0)
         else:
-            self.cls = SpectralConv1d(channels, 1, kernel_size=1, padding=0)
+            cmap_dim = 1
+        self.cls = SpectralConv1d(dino_C, cmap_dim, kernel_size=1, padding=0)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
-        h = self.main(x)
-        out = self.cls(h)
+        """
+        Args:
+            x: (B, C, L)
+            c: (B, cond_dim)
+        Returns:
+            out: (B, 1, L)
+        """
+        h = self.main(x)    # BCL
+        out = self.cls(h)   # (B, cmap_dim, L) or (B, 1, L)
 
         if self.c_dim > 0:
-            cmap = self.cmapper(c).unsqueeze(-1)
+            cmap = self.cmapper(c).unsqueeze(-1)    # B, cond_dim => B, cmap_dim, 1
             out = (out * cmap).sum(1, keepdim=True) * (1 / np.sqrt(self.cmap_dim))
+            # (B, cmap_dim, L) * (B, cmap_dim, 1) => (B, cmap_dim, L).sum(1) => (B, 1, L)
 
-        return out
+        return out  # must be (B, 1, L)
 
 
 class DINO(torch.nn.Module):
-    def __init__(self, hooks: list[int] = [2,5,8,11], hook_patch: bool = True):
+    def __init__(self, hooks: List[int] = [2,5,8,11], hook_patch: bool = True):
         super().__init__()
         self.n_hooks = len(hooks) + int(hook_patch)
 
@@ -121,6 +130,9 @@ class DINO(torch.nn.Module):
         x = self.norm(x)
         features = forward_vit(self.model, x)
         return features
+        # _, _, H, W = x.size()
+        # _ = self.model.model.forward_flex(x)
+        # return {k: self.model.rearrange(v) for k, v in activations.items()}
 
 
 class ProjectedDiscriminator(nn.Module):
@@ -133,7 +145,7 @@ class ProjectedDiscriminator(nn.Module):
         self.dino = DINO()
 
         heads = []
-        for i in range(self.dino.n_hooks):
+        for i in range(self.dino.n_hooks):  # 5 heads,
             heads += [str(i), DiscHead(self.dino.embed_dim, c_dim)],
         self.heads = nn.ModuleDict(heads)
 
@@ -146,6 +158,13 @@ class ProjectedDiscriminator(nn.Module):
         return self.train(False)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (B, 3, H, W)
+            c: (B, c_dim)
+        Returns:
+            logits: (B, #H * #DINO_patches i.e. L) or (B, 5*196) == (B, 980)
+        """
         # Apply augmentation (x in [-1, 1]).
         if self.diffaug:
             x = DiffAugment(x, policy='color,translation,cutout')
@@ -163,7 +182,20 @@ class ProjectedDiscriminator(nn.Module):
         # Apply discriminator heads.
         logits = []
         for k, head in self.heads.items():
-            logits.append(head(features[k], c).view(x.size(0), -1))
-        logits = torch.cat(logits, dim=1)
+            logits.append(head(features[k], c).view(x.size(0), -1))     # B1L => BL
+        logits = torch.cat(logits, dim=1)   # cat 5 BL => B, 5L
 
         return logits
+
+
+if __name__ == '__main__':
+    # set seed
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+    with torch.no_grad():
+        p = ProjectedDiscriminator(64)
+        p.eval()
+        x = torch.rand(2, 3, 224, 224)
+        c = torch.rand(2, 64)
+        print(p(x, c)[0][:8])   # 0.7690, -2.4762, -2.0082, -0.6760,  6.2214,  8.5858,  8.5007,  7.9704

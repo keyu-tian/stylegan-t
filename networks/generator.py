@@ -11,7 +11,7 @@ Generator architecture from
 "StyleGAN-T: Unlocking the Power of GANs for Fast Large-Scale Text-to-Image Synthesis".
 """
 
-from typing import Union, Any, Optional
+from typing import List, Union, Any, Optional
 
 import numpy as np
 import torch
@@ -44,7 +44,7 @@ def modulated_conv2d(
     up: int = 1,                                     # Integer upsampling factor.
     down: int = 1,                                   # Integer downsampling factor.
     padding: int = 0,                                # Padding with respect to the upsampled image.
-    resample_filter: Optional[list[int]] = None,     # Low-pass filter to apply when resampling activations.
+    resample_filter: Optional[List[int]] = None,     # Low-pass filter to apply when resampling activations.
     demodulate: bool = True,                         # Apply weight demodulation?
     flip_weight: bool = True,                        # False = convolution, True = correlation (matches torch.nn.functional.conv2d).
     fused_modconv: bool = True,                      # Perform modulation, convolution, and demodulation as a single fused operation?
@@ -102,9 +102,9 @@ class GroupNorm32(nn.GroupNorm):
 
 
 class StyleSplit(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, **kwargs):
+    def __init__(self, in_channels: int, out_channels: int, bias_init=0.0):
         super().__init__()
-        self.proj = FullyConnectedLayer(in_channels, 3*out_channels, **kwargs)
+        self.proj = FullyConnectedLayer(in_channels, 3*out_channels, bias_init=bias_init)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
@@ -117,22 +117,20 @@ class SynthesisInput(torch.nn.Module):
         self,
         w_dim: int,          # Intermediate latent (W) dimensionality.
         channels: int,       # Number of output channels.
-        size: int,           # Output spatial size.
-        sampling_rate: int,  # Output sampling rate.
-        bandwidth: int,      # Output bandwidth.
+        reso: int,           # Output spatial size.
     ):
         super().__init__()
-        self.w_dim = w_dim
-        self.channels = channels
-        self.size = np.broadcast_to(np.asarray(size), [2])
-        self.sampling_rate = sampling_rate
-        self.bandwidth = bandwidth
+        self.w_dim = w_dim          # 64, or 64+CLIPtextC
+        self.channels = channels    # 512
+        self.size = np.broadcast_to(np.asarray(reso), [2])  # 8, 8
+        self.sampling_rate = reso   # 8
+        self.bandwidth = 2  # 2
 
         # Draw random frequencies from uniform 2D disc.
         freqs = torch.randn([self.channels, 2])
         radii = freqs.square().sum(dim=1, keepdim=True).sqrt()
         freqs /= radii * radii.square().exp().pow(0.25)
-        freqs *= bandwidth
+        freqs *= self.bandwidth
         phases = torch.rand([self.channels]) - 0.5
 
         # Setup parameters and buffers.
@@ -163,8 +161,8 @@ class SynthesisInput(torch.nn.Module):
         transforms = m_r @ m_t @ transforms # First rotate resulting image, then translate, and finally apply user-specified transform.
 
         # Transform frequencies.
-        phases = phases + (freqs @ transforms[:, :2, 2:]).squeeze(2)
-        freqs = freqs @ transforms[:, :2, :2]
+        phases = phases + (freqs @ transforms[:, :2, 2:]).squeeze(2)    # 1C + (1C2 @ B21) == 1C + BC1.squeeze(2) == 1C + BC == BC
+        freqs = freqs @ transforms[:, :2, :2]                           # 1C2 @ B22 == BC2
 
         # Dampen out-of-band frequencies that may occur due to the user-specified transform.
         amplitudes = (1 - (freqs.norm(dim=2) - self.bandwidth) / (self.sampling_rate / 2 - self.bandwidth)).clamp(0, 1)
@@ -207,7 +205,7 @@ class SynthesisLayer(torch.nn.Module):
         up: int = 1,                             # Integer upsampling factor.
         use_noise: bool = True,                  # Enable noise input?
         activation: str = 'lrelu',               # Activation function: 'relu', 'lrelu', etc.
-        resample_filter: list[int] = [1,3,3,1],  # Low-pass filter to apply when resampling activations.
+        resample_filter: List[int] = [1,3,3,1],  # Low-pass filter to apply when resampling activations.
         conv_clamp: Optional[int] = None,        # Clamp the output of convolution layers to +-X, None = disable clamping.
         channels_last: bool = False,             # Use channels_last format for the weights?
         layer_scale_init: float = 1e-5,          # Initial value of layer scale.
@@ -233,7 +231,7 @@ class SynthesisLayer(torch.nn.Module):
 
         if use_noise:
             self.register_buffer('noise_const', torch.randn([resolution, resolution]))
-            self.noise_strength = Parameter(torch.zeros([]))
+            self.noise_strength = Parameter(torch.tensor(0.))
 
         self.affine = StyleSplit(w_dim, in_channels, bias_init=1)
 
@@ -250,7 +248,7 @@ class SynthesisLayer(torch.nn.Module):
         self,
         x: torch.Tensor,
         w: torch.Tensor,
-        noise_mode: str = 'random',
+        noise_mode: str = 'random', # 'const' when save_samples
         fused_modconv: bool = True,
         gain: int = 1,
     ) -> torch.Tensor:
@@ -331,9 +329,9 @@ class SynthesisBlock(torch.nn.Module):
         resolution: int,                                # Resolution of this block.
         img_channels: int,                              # Number of output color channels.
         is_last: bool,                                  # Is this the last block?
-        num_res_blocks: int = 1,                            # Number of conv layers per block.
-        architecture: str = 'orig',                     # Architecture: 'orig', 'skip'.
-        resample_filter: list[int] = [1,3,3,1],         # Low-pass filter to apply when resampling activations.
+        num_res_blocks: int = 2,                        # Number of conv layers per block.
+        architecture: str = 'skip',                     # Architecture: 'orig', 'skip'.
+        resample_filter: List[int] = [1,3,3,1],         # Low-pass filter to apply when resampling activations.
         conv_clamp: int = 256,                          # Clamp the output of convolution layers to +-X, None = disable clamping.
         use_fp16: bool = False,                         # Use FP16 for this block?
         fp16_channels_last: bool = False,               # Use channels-last memory format with FP16?
@@ -357,7 +355,7 @@ class SynthesisBlock(torch.nn.Module):
         self.num_torgb = 0
 
         if in_channels == 0:
-            self.input = SynthesisInput(w_dim=self.w_dim, channels=out_channels, size=resolution, sampling_rate=resolution, bandwidth=2)
+            self.input = SynthesisInput(w_dim=self.w_dim, channels=out_channels, reso=resolution)
             self.num_conv += 1
 
         if in_channels != 0:
@@ -497,7 +495,7 @@ class MappingNetwork(torch.nn.Module):
     def __init__(
         self,
         z_dim: int,                   # Input latent (Z) dimensionality, 0 = no latent.
-        conditional: bool = True,     # Text conditional?
+        conditional: bool,            # Text conditional?
         num_layers: int = 2,          # Number of mapping layers.
         activation: str = 'lrelu',    # Activation function: 'relu', 'lrelu', etc.
         lr_multiplier: float = 0.01,  # Learning rate multiplier for the mapping layers.
@@ -524,13 +522,13 @@ class MappingNetwork(torch.nn.Module):
     def forward(
         self,
         z: torch.Tensor,
-        c: Union[None, torch.Tensor, list[str]],
+        c: Union[None, torch.Tensor, List[str]],
         truncation_psi: float = 1.0,
     ) -> torch.Tensor:
         misc.assert_shape(z, [None, self.z_dim])
 
         # Forward pass.
-        x = self.mlp(normalize_2nd_moment(z))
+        x = self.mlp(normalize_2nd_moment(z))   # Z space to W space
 
         # Update moving average.
         if self.x_avg_beta is not None and self.training:
@@ -594,7 +592,7 @@ class Generator(torch.nn.Module):
     def forward(
         self,
         z: torch.Tensor,
-        c: Union[None, torch.Tensor, list[str]],
+        c: Union[None, torch.Tensor, List[str]],
         truncation_psi: float = 1.0, **synthesis_kwargs
     ) -> torch.Tensor:
         ws = self.mapping(z, c, truncation_psi=truncation_psi)

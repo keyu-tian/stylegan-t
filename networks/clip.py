@@ -7,6 +7,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 """Wrapper class for open_clip models."""
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -42,13 +43,13 @@ class CLIP(nn.Module):
         image_features = F.normalize(image_features, dim=-1)
         return image_features
 
-    def encode_text(self, texts: list[str]) -> torch.Tensor:
+    def encode_text(self, texts: List[str]) -> torch.Tensor:
         text = open_clip.tokenize(texts).to(self.device)
         text_features = self.model.encode_text(text)
         text_features = F.normalize(text_features, dim=-1)
         return text_features
 
-    def forward(self, images: torch.Tensor, texts: list[str], div255: bool = False) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, texts: List[str], div255: bool = False) -> torch.Tensor:
         assert len(images) == len(texts)
         image_features = self.encode_image(images, div255=div255)
         text_features = self.encode_text(texts)

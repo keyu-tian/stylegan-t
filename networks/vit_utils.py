@@ -23,39 +23,15 @@
 # Based on code from https://github.com/isl-org/DPT
 
 """Flexible configuration and feature extraction of timm VisionTransformers."""
-import os.path
+import os
 import types
 import math
-from typing import Callable
+from typing import Callable, List
 
 import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-class AddReadout(nn.Module):
-    def __init__(self, start_index: bool = 1):
-        super(AddReadout, self).__init__()
-        self.start_index = start_index
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.start_index == 2:
-            readout = (x[:, 0] + x[:, 1]) / 2
-        else:
-            readout = x[:, 0]
-        return x[:, self.start_index:] + readout.unsqueeze(1)
-
-
-class Transpose(nn.Module):
-    def __init__(self, dim0: int, dim1: int):
-        super(Transpose, self).__init__()
-        self.dim0 = dim0
-        self.dim1 = dim1
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.transpose(self.dim0, self.dim1)
-        return x.contiguous()
 
 
 def forward_vit(pretrained: nn.Module, x: torch.Tensor) -> dict:
@@ -66,8 +42,8 @@ def forward_vit(pretrained: nn.Module, x: torch.Tensor) -> dict:
 
 def _resize_pos_embed(self, posemb: torch.Tensor, gs_h: int, gs_w: int) -> torch.Tensor:
     posemb_tok, posemb_grid = (
-        posemb[:, : self.start_index],
-        posemb[0, self.start_index :],
+        posemb[:, :self.start_index],
+        posemb[0, self.start_index:],
     )
 
     gs_old = int(math.sqrt(len(posemb_grid)))
@@ -117,16 +93,16 @@ def get_activation(name: str) -> Callable:
 
 def make_vit_backbone(
     # model: nn.Module,
-    # patch_size: list[int] = [16, 16],
-    hooks: list[int] = [2, 5, 8, 11],
+    # patch_size: List[int] = [16, 16],
+    hooks: List[int] = [2, 5, 8, 11],   # 012, 345, 678, 91011
     hook_patch: bool = True,
-    start_index: list[int] = 1,
+    start_index: List[int] = 1,
 ):
     assert len(hooks) == 4
 
     patch_size = [16, 16]
     model = timm.create_model('vit_small_patch16_224', pretrained=False, num_classes=0)
-    ckpt = 'data/dino_deitsmall16_pretrain.pth'
+    ckpt = r'C:\Users\16333\Desktop\PyCharm\stylegan-t\data\dino_deitsmall16_pretrain.pth'
     if not os.path.exists(ckpt):
         ckpt = '/opt/tiger/run_trial/' + ckpt
     missing, unexpected = model.load_state_dict(torch.load(ckpt, 'cpu'))
@@ -144,12 +120,16 @@ def make_vit_backbone(
         pretrained.model.pos_drop.register_forward_hook(get_activation('4'))
 
     # configure readout
-    pretrained.rearrange = nn.Sequential(AddReadout(start_index), Transpose(1, 2))
+    def rearrange(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, 1:] + x[:, :1]     # absorb [cls] token
+        return x.transpose_(1, 2)   # BLC to BCL
+        
     pretrained.model.start_index = start_index
     pretrained.model.patch_size = patch_size
 
     # We inject this function into the VisionTransformer instances so that
     # we can use it with interpolated position embeddings without modifying the library source.
+    pretrained.rearrange = types.MethodType(rearrange, pretrained)
     pretrained.model.forward_flex = types.MethodType(forward_flex, pretrained.model)
     pretrained.model._resize_pos_embed = types.MethodType(
         _resize_pos_embed, pretrained.model

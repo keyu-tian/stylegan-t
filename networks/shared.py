@@ -8,7 +8,7 @@
 
 """Shared architecture blocks."""
 
-from typing import Callable
+from typing import Callable, List
 
 import numpy as np
 import torch
@@ -70,7 +70,7 @@ class FullyConnectedLayer(nn.Module):
 class MLP(nn.Module):
     def __init__(
         self,
-        features_list: list[int],    # Number of features in each layer of the MLP.
+        features_list: List[int],    # Number of features in each layer of the MLP.
         activation: str = 'linear',  # Activation function: 'relu', 'lrelu', etc.
         lr_multiplier: float = 1.0,  # Learning rate multiplier.
         linear_out: bool = False     # Use the 'linear' activation function for the output layer?

@@ -25,6 +25,7 @@ import torch.nn as nn
 import torch.utils.tensorboard as tensorboard
 
 import dnnlib
+from networks.generator import Generator
 from torch_utils import training_stats
 from torch_utils import misc
 from torch_utils import distributed as dist
@@ -295,7 +296,13 @@ def training_loop(
 
     # Construct networks.
     dist.print0('Constructing networks...')
-    G = dnnlib.util.construct_class_by_name(**G_kwargs).train().requires_grad_(False).to(device)
+    G = Generator(
+        z_dim=G_kwargs.z_dim, conditional=G_kwargs.conditional,
+        train_mode=G_kwargs.train_mode,
+        synthesis_kwargs=G_kwargs.synthesis_kwargs,
+        img_resolution=G_kwargs.img_resolution,
+    ).train().requires_grad_(False).to(device)
+    # G = dnnlib.util.construct_class_by_name(**G_kwargs).train().requires_grad_(False).to(device)
     G_ema = copy.deepcopy(G).eval()
     D = dnnlib.util.construct_class_by_name(c_dim=G.c_dim, **D_kwargs).train().requires_grad_(False).to(device)
 
