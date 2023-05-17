@@ -104,7 +104,7 @@ def make_vit_backbone(
     model = timm.create_model('vit_small_patch16_224', pretrained=False, num_classes=0)
     ckpt = r'C:\Users\16333\Desktop\PyCharm\stylegan-t\data\dino_deitsmall16_pretrain.pth'
     if not os.path.exists(ckpt):
-        ckpt = '/opt/tiger/run_trial/' + ckpt
+        ckpt = '/opt/tiger/run_trial/data/dino_deitsmall16_pretrain.pth'
     missing, unexpected = model.load_state_dict(torch.load(ckpt, 'cpu'))
     assert len(missing) == len(unexpected) == 0
 
